@@ -1,0 +1,134 @@
+# .github/workflows/weekly-scan.yml
+#
+# WHY CI/CD FOR SECURITY SCANS:
+#   Running scans manually is unreliable. A weekly automated pipeline ensures
+#   no newly-exposed service goes undetected. This mirrors how enterprise
+#   security teams run continuous vulnerability management programs.
+#
+# PIPELINE FLOW:
+#   Trigger (schedule/manual) → Install tools → Run scanner →
+#   Upload HTML report as artifact → Post Slack alert
+#
+# SECRETS REQUIRED (set in GitHub repo Settings → Secrets):
+#   SLACK_WEBHOOK_URL  — Slack Incoming Webhook URL
+#   SCAN_TARGET        — IP or hostname to scan (e.g. your test VM)
+#   REPORT_BASE_URL    — base URL if you publish reports (optional)
+
+name: Weekly Vulnerability Scan
+
+on:
+  # Run every Monday at 02:00 UTC
+  schedule:
+    - cron: "0 2 * * 1"
+
+  # Allow manual trigger from GitHub UI with custom target
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Target IP or hostname"
+        required: false
+        default: ""
+      ports:
+        description: "Port range (default: 1-1024)"
+        required: false
+        default: "1-1024"
+
+jobs:
+  vulnerability-scan:
+    name: Run Vulnerability Scan
+    runs-on: ubuntu-latest
+    # Prevent concurrent scans to avoid hammering the target
+    concurrency:
+      group: vuln-scan
+      cancel-in-progress: false
+
+    steps:
+      # ----------------------------------------------------------------
+      # 1. Checkout the scanner code
+      # ----------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ----------------------------------------------------------------
+      # 2. Install system dependencies
+      # ----------------------------------------------------------------
+      - name: Install Nmap
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y nmap
+
+      # ----------------------------------------------------------------
+      # 3. Set up Python
+      # ----------------------------------------------------------------
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Python dependencies
+        working-directory: vuln-scanner
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # ----------------------------------------------------------------
+      # 4. Determine scan target
+      #    Priority: manual input → secret → default test host
+      # ----------------------------------------------------------------
+      - name: Set scan target
+        id: target
+        run: |
+          TARGET="${{ github.event.inputs.target || secrets.SCAN_TARGET || 'scanme.nmap.org' }}"
+          PORTS="${{ github.event.inputs.ports || '1-1024' }}"
+          echo "target=$TARGET" >> $GITHUB_OUTPUT
+          echo "ports=$PORTS"   >> $GITHUB_OUTPUT
+          echo "Scanning target: $TARGET on ports $PORTS"
+
+      # ----------------------------------------------------------------
+      # 5. Execute the scan
+      # ----------------------------------------------------------------
+      - name: Run vulnerability scan
+        working-directory: vuln-scanner
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          REPORT_BASE_URL:   ${{ secrets.REPORT_BASE_URL }}
+        run: |
+          python main.py \
+            --target "${{ steps.target.outputs.target }}" \
+            --ports  "${{ steps.target.outputs.ports }}" \
+            --timing 4 \
+            --output reports/ \
+            --pdf \
+            --slack
+        # Continue even if scan finds critical issues (exit code 2)
+        # We want reports uploaded regardless
+        continue-on-error: true
+
+      # ----------------------------------------------------------------
+      # 6. Upload reports as GitHub Actions artifacts
+      #    Artifacts persist for 90 days and can be downloaded for review
+      # ----------------------------------------------------------------
+      - name: Upload scan reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: vulnerability-reports-${{ github.run_number }}
+          path: vuln-scanner/reports/
+          retention-days: 90
+
+      # ----------------------------------------------------------------
+      # 7. Fail the job if critical findings were found
+      #    This acts as a CI security gate
+      # ----------------------------------------------------------------
+      - name: Check for critical findings
+        working-directory: vuln-scanner
+        run: |
+          # Parse the JSON summary to check for criticals
+          # jq is available on GitHub Actions runners
+          CRITICAL=$(cat reports/*_summary.json 2>/dev/null | jq '.critical // 0' | head -1)
+          echo "Critical findings: ${CRITICAL:-0}"
+          if [ "${CRITICAL:-0}" -gt 0 ]; then
+            echo "::error::🚨 $CRITICAL critical vulnerability(ies) detected! Review the report."
+            exit 1
+          fi
+          echo "✅ No critical vulnerabilities found."

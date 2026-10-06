@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scan Report — {{ target }}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px;
+      background: #f0f2f5;
+      color: #1a1a2e;
+      line-height: 1.6;
+    }
+
+    /* ── Layout ──────────────────────────────────────────── */
+    .page { max-width: 960px; margin: 0 auto; padding: 0 1.5rem 3rem; }
+
+    /* ── Header ──────────────────────────────────────────── */
+    header {
+      background: #1a1a2e;
+      color: #fff;
+      padding: 1.75rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    header h1 { font-size: 1.3rem; font-weight: 700; letter-spacing: 0.02em; }
+    header p  { font-size: 0.85rem; opacity: 0.7; margin-top: 0.25rem; }
+    header code { color: #8be9fd; }
+    .host-badge {
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 0.35rem 0.9rem;
+      border-radius: 2rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .host-up   { background: #198754; color: #fff; }
+    .host-down { background: #6c757d; color: #fff; }
+
+    /* ── Section titles ──────────────────────────────────── */
+    .section-title {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #6c757d;
+      margin: 2rem 0 0.75rem;
+      padding-bottom: 0.4rem;
+      border-bottom: 1px solid #dee2e6;
+    }
+
+    /* ── Risk alert banner ───────────────────────────────── */
+    .risk-banner {
+      border-radius: 8px;
+      padding: 0.85rem 1.25rem;
+      font-weight: 600;
+      font-size: 0.9rem;
+      margin-bottom: 1.25rem;
+    }
+    .risk-critical { background: #fff0f0; border-left: 4px solid #dc3545; color: #7f1d1d; }
+    .risk-high     { background: #fff8f0; border-left: 4px solid #fd7e14; color: #7c3500; }
+    .risk-medium   { background: #fffbf0; border-left: 4px solid #ffc107; color: #665000; }
+    .risk-low      { background: #f0fff4; border-left: 4px solid #198754; color: #14532d; }
+
+    /* ── Stat cards ──────────────────────────────────────── */
+    .stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; margin-bottom: 1.5rem; }
+    .stat-card {
+      background: #fff;
+      border-radius: 8px;
+      padding: 1rem;
+      text-align: center;
+      border-top: 3px solid transparent;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+    .stat-card .num  { font-size: 2rem; font-weight: 700; line-height: 1; }
+    .stat-card .lbl  { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: #6c757d; margin-top: 0.25rem; }
+    .sc-critical { border-color: #dc3545; }  .sc-critical .num { color: #dc3545; }
+    .sc-high     { border-color: #fd7e14; }  .sc-high     .num { color: #fd7e14; }
+    .sc-medium   { border-color: #ffc107; }  .sc-medium   .num { color: #b45309; }
+    .sc-low      { border-color: #198754; }  .sc-low      .num { color: #198754; }
+
+    /* ── Meta table ──────────────────────────────────────── */
+    .meta-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+    }
+    .meta-card {
+      background: #fff;
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+    .meta-card table { width: 100%; border-collapse: collapse; }
+    .meta-card th { font-weight: 600; color: #495057; width: 40%; padding: 0.3rem 0; font-size: 0.8rem; }
+    .meta-card td { color: #1a1a2e; padding: 0.3rem 0; font-size: 0.82rem; }
+    .meta-card tr + tr th, .meta-card tr + tr td { border-top: 1px solid #f1f3f5; }
+    code { font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 0.82em; background: #f1f3f5; padding: 0.1em 0.35em; border-radius: 3px; }
+
+    /* ── Ports table ─────────────────────────────────────── */
+    .card {
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      overflow: hidden;
+      margin-bottom: 1rem;
+    }
+    table.data { width: 100%; border-collapse: collapse; }
+    table.data thead th {
+      background: #1a1a2e;
+      color: #fff;
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0.65rem 1rem;
+      text-align: left;
+    }
+    table.data tbody tr:nth-child(even) { background: #f8f9fa; }
+    table.data tbody td { padding: 0.55rem 1rem; font-size: 0.82rem; vertical-align: middle; }
+    table.data tbody tr:hover { background: #e9f0ff; }
+
+    /* ── Badges / pills ──────────────────────────────────── */
+    .badge {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 0.2rem 0.55rem;
+      border-radius: 0.25rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .b-critical { background: #dc3545; color: #fff; }
+    .b-high     { background: #fd7e14; color: #fff; }
+    .b-medium   { background: #ffc107; color: #212529; }
+    .b-low      { background: #198754; color: #fff; }
+    .b-info     { background: #0dcaf0; color: #fff; }
+    .b-port     { background: #1a1a2e; color: #8be9fd; font-family: monospace; }
+    .b-cve      { background: #6f42c1; color: #fff; }
+
+    .cvss-pill {
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 0.2rem 0.6rem;
+      border-radius: 1rem;
+      color: #fff;
+    }
+    .cp-critical { background: #dc3545; }
+    .cp-high     { background: #fd7e14; }
+    .cp-medium   { background: #ffc107; color: #212529; }
+    .cp-low      { background: #198754; }
+
+    /* ── Finding cards ───────────────────────────────────── */
+    .finding {
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      margin-bottom: 1rem;
+      overflow: hidden;
+    }
+    .finding-header {
+      padding: 0.75rem 1.25rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      border-bottom: 1px solid #f1f3f5;
+    }
+    .finding-header .left  { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+    .finding-header .right { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+    .finding-header strong { font-size: 0.9rem; }
+    .finding-body { padding: 1rem 1.25rem; }
+
+    .version-line { font-size: 0.82rem; margin-bottom: 0.75rem; color: #495057; }
+    .version-line strong { color: #1a1a2e; }
+
+    details summary {
+      font-size: 0.78rem;
+      color: #6c757d;
+      cursor: pointer;
+      user-select: none;
+      margin-bottom: 0.5rem;
+    }
+    details summary:hover { color: #1a1a2e; }
+    .raw-output {
+      font-family: 'Cascadia Code', monospace;
+      font-size: 0.75rem;
+      background: #1a1a2e;
+      color: #f8f8f2;
+      padding: 0.75rem 1rem;
+      border-radius: 6px;
+      white-space: pre-wrap;
+      max-height: 160px;
+      overflow-y: auto;
+      margin-bottom: 0.75rem;
+    }
+    .remediation {
+      background: #f0fff4;
+      border-left: 3px solid #198754;
+      padding: 0.6rem 1rem;
+      border-radius: 0 6px 6px 0;
+      font-size: 0.82rem;
+      color: #14532d;
+    }
+    .remediation strong { display: block; margin-bottom: 0.1rem; color: #198754; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; }
+
+    /* ── Empty state ─────────────────────────────────────── */
+    .empty {
+      background: #f0fff4;
+      border: 1px solid #86efac;
+      border-radius: 8px;
+      padding: 1.5rem;
+      text-align: center;
+      color: #14532d;
+    }
+    .empty h3 { font-size: 1rem; margin-bottom: 0.25rem; }
+    .empty p  { font-size: 0.82rem; opacity: 0.8; }
+
+    /* ── Footer ──────────────────────────────────────────── */
+    footer {
+      margin-top: 3rem;
+      padding-top: 1rem;
+      border-top: 1px solid #dee2e6;
+      text-align: center;
+      font-size: 0.75rem;
+      color: #adb5bd;
+    }
+
+    /* ── Print ───────────────────────────────────────────── */
+    @media print {
+      body { background: #fff; }
+      header { border-radius: 0; }
+      .finding, .card, .meta-card { box-shadow: none; border: 1px solid #dee2e6; }
+      details[open] summary::after { content: ''; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<header>
+  <div>
+    <h1>🔍 Vulnerability Scan Report</h1>
+    <p>Target: <code>{{ target }}</code>{% if hostname %} · {{ hostname }}{% endif %}</p>
+  </div>
+  <div style="text-align:right">
+    <span class="host-badge {{ 'host-up' if state == 'up' else 'host-down' }}">{{ state }}</span>
+    <p style="font-size:0.78rem;opacity:0.6;margin-top:0.4rem">{{ generated_at }}</p>
+  </div>
+</header>
+
+<div class="page">
+
+  <!-- ── Executive Summary ──────────────────────────────── -->
+  <p class="section-title">Executive Summary</p>
+
+  <!-- Risk banner -->
+  {% if 'CRITICAL' in risk_score %}
+  <div class="risk-banner risk-critical">🔴 {{ risk_score }}</div>
+  {% elif 'HIGH' in risk_score %}
+  <div class="risk-banner risk-high">🟠 {{ risk_score }}</div>
+  {% elif 'MEDIUM' in risk_score %}
+  <div class="risk-banner risk-medium">🟡 {{ risk_score }}</div>
+  {% else %}
+  <div class="risk-banner risk-low">🟢 {{ risk_score }}</div>
+  {% endif %}
+
+  <!-- Stat cards -->
+  <div class="stat-row">
+    <div class="stat-card sc-critical">
+      <div class="num">{{ critical_count }}</div>
+      <div class="lbl">Critical</div>
+    </div>
+    <div class="stat-card sc-high">
+      <div class="num">{{ high_count }}</div>
+      <div class="lbl">High</div>
+    </div>
+    <div class="stat-card sc-medium">
+      <div class="num">{{ medium_count }}</div>
+      <div class="lbl">Medium</div>
+    </div>
+    <div class="stat-card sc-low">
+      <div class="num">{{ low_count }}</div>
+      <div class="lbl">Low</div>
+    </div>
+  </div>
+
+  <!-- ── Scan Details ───────────────────────────────────── -->
+  <p class="section-title">Scan Details</p>
+  <div class="meta-grid">
+    <div class="meta-card">
+      <table>
+        <tr><th>Target</th>  <td><code>{{ target }}</code></td></tr>
+        <tr><th>Hostname</th><td>{{ hostname or "—" }}</td></tr>
+        <tr><th>State</th>   <td><span class="badge {{ 'b-low' if state == 'up' else 'b-info' }}">{{ state }}</span></td></tr>
+        <tr><th>OS Guess</th><td>{{ os_guess }}</td></tr>
+      </table>
+    </div>
+    <div class="meta-card">
+      <table>
+        <tr><th>Started</th>      <td>{{ scan_start }}</td></tr>
+        <tr><th>Ended</th>        <td>{{ scan_end }}</td></tr>
+        <tr><th>Open Ports</th>   <td>{{ open_ports | length }}</td></tr>
+        <tr><th>Total Findings</th><td>{{ total_count }}</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── Open Ports ────────────────────────────────────── -->
+  {% if open_ports %}
+  <p class="section-title">Open Ports & Services</p>
+  <div class="card">
+    <table class="data">
+      <thead>
+        <tr>
+          <th>Port</th>
+          <th>Proto</th>
+          <th>State</th>
+          <th>Service</th>
+          <th>Version / Banner</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in open_ports %}
+        <tr>
+          <td><span class="badge b-port">{{ p.port }}</span></td>
+          <td>{{ p.protocol | upper }}</td>
+          <td><span class="badge b-low">open</span></td>
+          <td>{{ p.service }}</td>
+          <td style="color:#6c757d">{{ p.version or "—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <!-- ── Vulnerability Findings ────────────────────────── -->
+  <p class="section-title">Vulnerability Findings ({{ total_count }})</p>
+
+  {% if vulnerabilities %}
+    {% for v in vulnerabilities %}
+    <div class="finding">
+      <div class="finding-header">
+        <div class="left">
+          <span class="badge b-{{ v.severity | lower }}">{{ v.severity }}</span>
+          <strong>{{ v.script_id }}</strong>
+          {% if v.cve %}<span class="badge b-cve">{{ v.cve }}</span>{% endif %}
+        </div>
+        <div class="right">
+          <span class="cvss-pill
+            {% if v.cvss_score >= 9 %}cp-critical
+            {% elif v.cvss_score >= 7 %}cp-high
+            {% elif v.cvss_score >= 4 %}cp-medium
+            {% else %}cp-low{% endif %}">
+            CVSS&nbsp;{{ v.cvss_score }}
+          </span>
+          <span class="badge b-port">{{ v.port }}/{{ v.protocol }}</span>
+          <span style="font-size:0.78rem;color:#6c757d">{{ v.service }}</span>
+        </div>
+      </div>
+      <div class="finding-body">
+        <p class="version-line"><strong>Detected version:</strong> <code>{{ v.version or "unknown" }}</code></p>
+
+        <details>
+          <summary>▶ Raw scanner output</summary>
+          <div class="raw-output">{{ v.output }}</div>
+        </details>
+
+        <div class="remediation">
+          <strong>🔧 Remediation</strong>
+          {{ v.remediation }}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+
+  {% else %}
+  <div class="empty">
+    <h3>✅ No vulnerabilities detected</h3>
+    <p>No NSE scripts fired on the scanned ports. Try a wider port range or add <code>--os</code> with sudo for OS fingerprinting.</p>
+  </div>
+  {% endif %}
+
+  <footer>
+    Generated by <strong>VulnScanner</strong> &mdash; automated recon pipeline &mdash; {{ generated_at }}
+  </footer>
+
+</div>
+</body>
+</html>
